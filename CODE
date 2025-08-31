@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolarIQ: Predictive Energy Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #101010;
+            background-image: radial-gradient(circle, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+        .chat-container::-webkit-scrollbar { width: 8px; }
+        .chat-container::-webkit-scrollbar-thumb { background-color: #22c55e; border-radius: 4px; }
+        .chat-container::-webkit-scrollbar-track { background-color: #1f2937; }
+        .chart-wrapper {
+            height: 350px; padding: 1rem; background-color: #18181b;
+            border-radius: 0.75rem; margin-top: 0.75rem; border: 1px solid #374151;
+        }
+        /* --- Animated Weather Icons --- */
+        .weather-icon { position: relative; width: 40px; height: 40px; }
+        .sun {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 20px; height: 20px; background: #22c55e; border-radius: 50%;
+            animation: spin 12s linear infinite;
+        }
+        .sun::before, .sun::after {
+            content: ''; position: absolute; background: #22c55e;
+        }
+        .sun::before { top: -4px; left: 50%; transform: translateX(-50%); width: 2px; height: 8px; }
+        .sun::after { top: 50%; left: -4px; transform: translateY(-50%); width: 8px; height: 2px; }
+        .cloud {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 25px; height: 8px; background: #22c55e; border-radius: 5px;
+        }
+        .cloud::before, .cloud::after {
+            content: ''; position: absolute; background: #22c55e; border-radius: 50%;
+        }
+        .cloud::before { width: 12px; height: 12px; top: -6px; left: 3px; }
+        .cloud::after { width: 15px; height: 15px; top: -8px; left: 10px; }
+        .rain {
+            position: absolute; top: 15px; left: 50%; display: flex;
+        }
+        .rain .drop {
+            width: 2px; height: 8px; background: #22c55e; border-radius: 1px;
+            margin: 0 3px; animation: fall 1s linear infinite;
+        }
+        .rain .drop:nth-child(2) { animation-delay: -0.3s; }
+        .rain .drop:nth-child(3) { animation-delay: -0.6s; }
+
+        @keyframes spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+        @keyframes fall {
+            0% { transform: translateY(-10px); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateY(20px); opacity: 0; }
+        }
+    </style>
+</head>
+<body class="text-gray-200 flex flex-col h-screen">
+
+    <header class="bg-gray-900/70 backdrop-blur-sm shadow-lg p-4 flex items-center justify-between border-b border-gray-700 z-10">
+        <div class="flex items-center space-x-3">
+             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 18C15.3137 18 18 15.3137 18 12C18 8.68629 15.3137 6 12 6C8.68629 6 6 8.68629 6 12C6 15.3137 8.68629 18 12 18Z" stroke="#22c55e" stroke-width="2"/>
+                <path d="M12 2V3" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+                <path d="M12 21V22" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+                <path d="M4.92969 4.92969L5.63969 5.63969" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+                <path d="M18.3604 18.3604L19.0704 19.0704" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+                <path d="M2 12H3" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+                <path d="M21 12H22" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+                <path d="M4.92969 19.0704L5.63969 18.3604" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+                <path d="M18.3604 5.63969L19.0704 4.92969" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <h1 class="text-3xl font-bold text-green-400">SolarIQ</h1>
+        </div>
+        <div id="weather-display" class="flex items-center space-x-2 text-green-400 font-semibold text-lg">
+            <span id="current-temp">--°C</span>
+            <div id="weather-icon" class="weather-icon"></div>
+        </div>
+    </header>
+
+    <main class="flex-grow flex flex-col w-full max-w-4xl mx-auto p-4 overflow-hidden">
+        <div id="chat-container" class="flex-grow mb-4 overflow-y-auto chat-container">
+            <!-- Chat messages will be appended here -->
+        </div>
+        
+        <div id="prompt-starters" class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <!-- Prompt starter buttons will be added here -->
+        </div>
+
+        <div id="loading-indicator" class="px-4 py-2 text-gray-400 flex items-center gap-2" style="display: none;">
+            <svg class="animate-spin h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            SolarIQ is thinking...
+        </div>
+
+        <div class="mt-auto bg-gray-900/50 backdrop-blur-lg rounded-xl border border-gray-700">
+            <div class="relative">
+                <input type="text" id="user-input" class="w-full bg-transparent text-white text-lg rounded-xl py-4 pl-6 pr-16 focus:outline-none" placeholder="Ask about energy usage or predictions...">
+                <button id="submit-btn" class="absolute top-1/2 right-3 -translate-y-1/2 bg-green-600 hover:bg-green-700 text-white font-bold p-2 rounded-lg transition duration-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2 .01 7z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </main>
+
+<script type="module">
+    // --- SIMULATION & CONTEXT ---
+    const currentDateForSim = moment('2025-08-31'); // Set the current date for the simulation
+
+    // --- DOM ELEMENT REFERENCES ---
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const promptStartersContainer = document.getElementById('prompt-starters');
+    const currentTempSpan = document.getElementById('current-temp');
+    const weatherIconDiv = document.getElementById('weather-icon');
+
+    // --- ICONS ---
+    const USER_ICON = `<div class="w-8 h-8 rounded-full bg-green-800 flex items-center justify-center flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-200" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" /></svg></div>`;
+    const BOT_ICON = `<div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor"><path d="M11 17a1 1 0 001.447.894l4-2A1 1 0 0017 15V5a1 1 0 00-1.447-.894l-4 2A1 1 0 0011 7v10zM4 17a1 1 0 001.447.894l4-2A1 1 0 0010 15V5a1 1 0 00-1.447-.894l-4 2A1 1 0 004 7v10z" /></svg></div>`;
+
+    // --- CONFIGURATION & MODELS ---
+    const COST_PER_KWH_CONSUMED = 5.90; // Average rate in INR
+    const VALUE_PER_KWH_GENERATED = 2.97; // Feed-in tariff for domestic solar in INR
+    let energyData = [];
+    let chartInstances = {};
+    let consumptionModel, generationModel;
+    let lastDataDate;
+    let dataForTips = {}; // To store data for Gemini API calls
+
+    // --- LINEAR REGRESSION MODEL ---
+    class LinearRegression {
+        constructor() { this.weights = []; this.bias = 0; }
+        fit(X, y, { learningRate = 0.01, iterations = 100 } = {}) {
+            const n_samples = X.length, n_features = X[0].length;
+            this.weights = new Array(n_features).fill(0); this.bias = 0;
+            for (let i = 0; i < iterations; i++) {
+                let y_predicted = X.map(x_i => this._predict_single(x_i));
+                let dw = new Array(n_features).fill(0), db = 0;
+                for (let j = 0; j < n_samples; j++) {
+                    const error = y_predicted[j] - y[j];
+                    for (let k = 0; k < n_features; k++) dw[k] += (1/n_samples) * X[j][k] * error;
+                    db += (1/n_samples) * error;
+                }
+                this.weights = this.weights.map((w, k) => w - learningRate * dw[k]);
+                this.bias -= learningRate * db;
+            }
+        }
+        _predict_single(x) { return x.reduce((acc, val, i) => acc + val * this.weights[i], this.bias); }
+        predict(X) { return X.map(x => this._predict_single(x)); }
+    }
+
+    // --- CORE FUNCTIONS ---
+    function generateAndProcessData() {
+        console.log("Generating household data based on real-world patterns for Belagavi, Karnataka...");
+        const data = [];
+        const endDate = currentDateForSim.clone();
+        const startDate = endDate.clone().subtract(3, 'year');
+        lastDataDate = endDate.clone();
+        let currentDate = startDate.clone();
+        const getSeason = (month) => {
+            if ([11, 0, 1].includes(month)) return 'Winter'; if ([2, 3, 4, 5].includes(month)) return 'Summer';
+            if ([6, 7, 8].includes(month)) return 'Monsoon'; return 'Autumn';
+        };
+        // Adjusted patterns for Belagavi's climate
+        const monthlyPatterns = {
+            0: {ghi: 5.8, temp: 22}, 1: {ghi: 6.7, temp: 25}, 2: {ghi: 7.2, temp: 28},
+            3: {ghi: 7.0, temp: 30}, 4: {ghi: 6.2, temp: 28}, 5: {ghi: 4.0, temp: 25},
+            6: {ghi: 3.5, temp: 24}, 7: {ghi: 3.8, temp: 24}, 8: {ghi: 4.5, temp: 25},
+            9: {ghi: 5.2, temp: 24}, 10: {ghi: 5.0, temp: 22}, 11: {ghi: 5.2, temp: 21}
+        };
+        while (currentDate.isSameOrBefore(endDate)) {
+            const month = currentDate.month();
+            const pattern = monthlyPatterns[month];
+            for (let hour = 0; hour < 24; hour++) {
+                const timestamp = currentDate.clone().hour(hour);
+                const temperature = pattern.temp + Math.sin((hour - 9) * Math.PI / 12) * 3 + (Math.random() - 0.5);
+                const solar_irradiance = Math.max(0, (pattern.ghi * 1000 / 6) * Math.sin((hour - 5) * Math.PI / 14) + (Math.random() - 0.5) * 50);
+                const solar_generation_kwh = Math.max(0, (solar_irradiance / 1000) * 4.5 * (1 - (temperature - 25) * 0.004));
+                const season = getSeason(month);
+                const ac_kwh = season === 'Summer' && temperature > 26 && hour > 11 && hour < 19 ? (1.5 + Math.random()) : Math.random() * 0.1;
+                const fridge_kwh = 0.15 + Math.random() * 0.1;
+                const pump_kwh = (hour === 7 || hour === 19) ? (0.75 + Math.random() * 0.25) : Math.random() * 0.05;
+                const other_loads_kwh = (hour > 6 && hour < 23) ? (0.3 + Math.random() * 0.5) : 0.1;
+                const total_consumption_kwh = ac_kwh + fridge_kwh + pump_kwh + other_loads_kwh;
+                data.push({ timestamp: timestamp.toDate(), temperature, solar_irradiance, solar_generation_kwh, total_consumption_kwh, hour, day_of_week: timestamp.day(), day_of_year: timestamp.dayOfYear(), season });
+            }
+            currentDate.add(1, 'days');
+        }
+        energyData = data;
+        console.log(`Generated ${energyData.length} hourly household data points up to ${lastDataDate.format('LL')}.`);
+    }
+
+    function getFeatures(momentDate) {
+        const month = momentDate.month();
+        return [
+            momentDate.dayOfYear() / 366, momentDate.hour() / 24,
+            (Math.sin(momentDate.dayOfYear() * 2 * Math.PI / 366) + 1) / 2, (Math.cos(momentDate.dayOfYear() * 2 * Math.PI / 366) + 1) / 2,
+            (month >= 2 && month <= 5) ? 1 : 0, // Summer
+            (month >= 6 && month <= 8) ? 1 : 0, // Monsoon
+            (month >= 11 || month <= 1) ? 1 : 0, // Winter
+        ];
+    }
+
+    function trainModels() {
+        if(energyData.length === 0) { console.error("Cannot train models, no data available."); return; }
+        console.log("Training models on household data patterns...");
+        const X = energyData.map(d => getFeatures(moment(d.timestamp)));
+        const y_consumption = energyData.map(d => d.total_consumption_kwh);
+        consumptionModel = new LinearRegression();
+        consumptionModel.fit(X, y_consumption, {learningRate: 0.1, iterations: 100});
+        const y_generation = energyData.map(d => d.solar_generation_kwh);
+        generationModel = new LinearRegression();
+        generationModel.fit(X, y_generation, {learningRate: 0.1, iterations: 100});
+        console.log("Models trained.");
+    }
+
+    // --- UI & CHAT FUNCTIONS ---
+    function addMessage(content, sender, options = {}) {
+        const messageWrapper = document.createElement('div');
+        messageWrapper.classList.add('flex', 'items-start', 'gap-3', 'mb-4', 'w-full');
+        const bubble = document.createElement('div');
+        bubble.classList.add('p-3', 'rounded-lg', 'max-w-md', 'break-words');
+        bubble.innerHTML = content;
+
+        if (sender === 'user') {
+            messageWrapper.classList.add('justify-end');
+            bubble.classList.add('bg-green-700', 'text-white');
+            messageWrapper.appendChild(bubble);
+            messageWrapper.innerHTML += USER_ICON;
+        } else {
+            messageWrapper.classList.add('justify-start');
+            bubble.classList.add('bg-gray-700', 'text-white');
+            messageWrapper.innerHTML += BOT_ICON;
+            messageWrapper.appendChild(bubble);
+            
+            if(options.showTipsButton) {
+                const tipsButton = document.createElement('button');
+                tipsButton.innerHTML = '✨ Get Energy Saving Tips';
+                tipsButton.classList.add('mt-3', 'bg-green-600', 'hover:bg-green-700', 'text-white', 'font-bold', 'py-2', 'px-4', 'rounded-lg', 'transition', 'duration-300', 'w-full');
+                tipsButton.onclick = () => {
+                    getEnergySavingTips(options.tipsId);
+                    tipsButton.disabled = true;
+                    tipsButton.innerHTML = '✨ Generating Tips...';
+                };
+                bubble.appendChild(tipsButton);
+            }
+        }
+        chatContainer.appendChild(messageWrapper);
+        scrollToBottom();
+    }
+
+    function addChartMessage(chartData) {
+        const chartId = `chart-${Date.now()}`;
+        const messageWrapper = document.createElement('div');
+        messageWrapper.classList.add('flex', 'items-start', 'gap-3', 'mb-4', 'justify-start', 'w-full');
+        const chartContainerDiv = document.createElement('div');
+        chartContainerDiv.classList.add('max-w-full', 'md:max-w-2xl', 'w-full');
+        chartContainerDiv.innerHTML = `<div class="chart-wrapper"><canvas id="${chartId}"></canvas></div>`;
+        messageWrapper.innerHTML += BOT_ICON;
+        messageWrapper.appendChild(chartContainerDiv);
+        chatContainer.appendChild(messageWrapper);
+        renderChart(chartId, chartData);
+        scrollToBottom();
+    }
+    
+    function scrollToBottom() { chatContainer.scrollTop = chatContainer.scrollHeight; }
+
+    function renderChart(canvasId, chartData) {
+        const { labels, datasets, title } = chartData;
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'line', data: { labels, datasets: datasets.map(ds => ({ ...ds, backgroundColor: `${ds.color}33`, fill: true, tension: 0.3, pointRadius: 1, borderWidth: 2 })) },
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { color: '#cbd5e0' }, grid: { color: '#374151' } }, y: { ticks: { color: '#cbd5e0' }, grid: { color: '#374151' }, title: { display: true, text: 'Energy (kWh)', color: '#cbd5e0' } } }, plugins: { legend: { labels: { color: '#e2e8f0' } }, title: { display: true, text: title, color: '#e2e8f0', font: { size: 16 } } } }
+        });
+    }
+
+    // --- GEMINI API FUNCTION ---
+    async function getEnergySavingTips(tipsId) {
+        const data = dataForTips[tipsId];
+        if (!data) {
+            addMessage("Sorry, I couldn't find the data to generate tips.", 'bot');
+            return;
+        }
+
+        addMessage("Analyzing your data to find the best saving tips...", 'bot');
+        
+        const prompt = `You are an expert energy advisor for a homeowner in Belagavi, Karnataka, India. Their home has a rooftop solar panel system.
+        The user just looked at their energy data for the period ${data.startDate.format('LL')} to ${data.endDate.format('LL')}.
+        Here is the summary:
+        - Total Consumption: ${data.totalConsumption.toFixed(2)} kWh (Cost: ₹${(data.totalConsumption * COST_PER_KWH_CONSUMED).toFixed(2)})
+        - Total Solar Generation: ${data.totalGeneration.toFixed(2)} kWh (Value: ₹${(data.totalGeneration * VALUE_PER_KWH_GENERATED).toFixed(2)})
+
+        Based ONLY on this data, provide 3-4 concise, actionable, and personalized energy-saving tips. Frame the tips in a friendly and encouraging tone. Focus on high-impact changes they can make. Format the response as an HTML unordered list (\`<ul><li>...\</li></ul>\`).`;
+
+        try {
+            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+            const payload = { contents: chatHistory };
+            const apiKey = ""; // Provided by the environment
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`API call failed with status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.candidates && result.candidates.length > 0 &&
+                result.candidates[0].content && result.candidates[0].content.parts &&
+                result.candidates[0].content.parts.length > 0) {
+                const text = result.candidates[0].content.parts[0].text;
+                addMessage("Here are some personalized tips based on your data:" + text, 'bot');
+            } else {
+                throw new Error("Unexpected API response structure");
+            }
+
+        } catch (error) {
+            console.error("Gemini API error:", error);
+            addMessage("Sorry, I had trouble generating tips. Please try again.", 'bot');
+        }
+    }
+
+    // --- QUERY PROCESSING ---
+    async function handleUserQuery(query) {
+        promptStartersContainer.style.display = 'none';
+        loadingIndicator.style.display = 'flex';
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+            const { startDate, endDate, season, isPrediction } = parseDateAndSeason(query);
+            const consumptionKeywords = ['consumption', 'usage', 'consumed', 'cost', 'price'];
+            const generationKeywords = ['generation', 'generated', 'produced', 'solar', 'value'];
+            let dataType = 'both';
+            if (consumptionKeywords.some(kw => query.toLowerCase().includes(kw))) dataType = 'consumption';
+            else if (generationKeywords.some(kw => query.toLowerCase().includes(kw))) dataType = 'generation';
+
+            if (isPrediction) { handlePrediction(dataType, startDate, endDate); }
+            else { handleHistoricalData(dataType, startDate, endDate, season); }
+        } catch (error) {
+            console.error("Query handling error:", error);
+            addMessage("I'm sorry, I encountered an error. Please try a different query.", 'bot');
+        } finally {
+            loadingIndicator.style.display = 'none';
+        }
+    }
+
+    function parseDateAndSeason(query) {
+        query = query.toLowerCase();
+        let startDate, endDate, season;
+        let isPrediction = ['predict', 'forecast', 'estimate', 'next'].some(kw => query.includes(kw));
+        
+        // --- NEW: Advanced Date Range Parsing ---
+        const rangeMatch = query.match(/(?:from|between)\s+(.*?)\s+(?:to|and)\s+(.*)/);
+        if (rangeMatch) {
+            let startStr = rangeMatch[1].trim().replace(/(?:st|nd|rd|th)/g, '');
+            let endStr = rangeMatch[2].trim().replace(/(?:st|nd|rd|th)/g, '');
+
+            const yearInEndStrMatch = endStr.match(/\b(20\d{2})\b/);
+            const yearInStartStrMatch = startStr.match(/\b(20\d{2})\b/);
+            const defaultYear = currentDateForSim.year();
+
+            // If start date has no year, give it one.
+            if (!yearInStartStrMatch) {
+                // If end date has a year, use that. Otherwise use default.
+                startStr += ` ${yearInEndStrMatch ? yearInEndStrMatch[0] : defaultYear}`;
+            }
+
+            // If end date has no year, give it one.
+            if (!yearInEndStrMatch) {
+                // Use the (potentially newly added) year from the start string.
+                const finalStartYearMatch = startStr.match(/\b(20\d{2})\b/);
+                endStr += ` ${finalStartYearMatch ? finalStartYearMatch[0] : defaultYear}`;
+            }
+
+            const parsedStart = moment(startStr, ["MMMM D YYYY", "MMM D YYYY", "D MMMM YYYY", "D MMM YYYY"]);
+            const parsedEnd = moment(endStr, ["MMMM D YYYY", "MMM D YYYY", "D MMMM YYYY", "D MMM YYYY"]);
+
+            if (parsedStart.isValid() && parsedEnd.isValid()) {
+                startDate = parsedStart.startOf('day');
+                endDate = parsedEnd.endOf('day');
+                if (startDate.isAfter(lastDataDate)) { isPrediction = true; }
+                return { startDate, endDate, season: undefined, isPrediction };
+            }
+        }
+
+        // --- Fallback to original logic if no range is matched ---
+        const yearMatchFallback = query.match(/\b(20\d{2})\b/);
+        const referenceYear = yearMatchFallback ? parseInt(yearMatchFallback[0]) : currentDateForSim.clone().year();
+        
+        const monthNames = "january|february|march|april|may|june|july|august|september|october|november|december";
+        const monthMatch = query.match(new RegExp(`\\b(${monthNames})\\b`));
+        if (monthMatch) {
+            startDate = moment(`${monthMatch[0]} ${referenceYear}`, "MMMM YYYY").startOf('month');
+            endDate = startDate.clone().endOf('month');
+        } else if (yearMatchFallback && !monthMatch) {
+            startDate = moment(String(referenceYear), 'YYYY').startOf('year');
+            endDate = moment(String(referenceYear), 'YYYY').endOf('year');
+        } else if (query.includes('today')) { startDate = currentDateForSim.clone().startOf('day'); endDate = currentDateForSim.clone().endOf('day'); }
+        else if (query.includes('yesterday')) { startDate = currentDateForSim.clone().subtract(1, 'day').startOf('day'); endDate = currentDateForSim.clone().subtract(1, 'day').endOf('day'); }
+        else if (query.includes('this week')) { startDate = currentDateForSim.clone().startOf('week'); endDate = currentDateForSim.clone().endOf('week'); }
+        else if (query.includes('last week')) { startDate = currentDateForSim.clone().subtract(1, 'week').startOf('week'); endDate = currentDateForSim.clone().subtract(1, 'week').endOf('week'); }
+        else if (query.includes('this month')) { startDate = currentDateForSim.clone().startOf('month'); endDate = currentDateForSim.clone().endOf('month'); }
+        else if (query.includes('last month')) { startDate = currentDateForSim.clone().subtract(1, 'month').startOf('month'); endDate = currentDateForSim.clone().subtract(1, 'month').endOf('month'); }
+        
+        if (query.includes('summer')) season = 'Summer'; else if (query.includes('winter')) season = 'Winter';
+        else if (query.includes('monsoon')) season = 'Monsoon'; else if (query.includes('autumn')) season = 'Autumn';
+        
+        if (!startDate) { // Default to prediction for next week if no date is found
+            isPrediction = true;
+            startDate = currentDateForSim.clone().add(1, 'day').startOf('day');
+            endDate = currentDateForSim.clone().add(7, 'days').endOf('day');
+        }
+        
+        if (startDate.isAfter(lastDataDate)) { isPrediction = true; }
+
+        return { startDate, endDate, season, isPrediction };
+    }
+
+
+    function processAndChartData(dataType, data, titlePrefix, startDate, endDate) {
+// ... existing code ... -->
+
